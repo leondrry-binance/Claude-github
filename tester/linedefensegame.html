@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Line Defense</title>
+<style>
+:root{--bg:#10151c;--panel:#1a222d;--panel2:#222d3b;--ink:#e8edf3;--muted:#8b98a8;--accent:#4cc9f0;--good:#6ee7a0;--bad:#ff6b6b;--gold:#ffd166}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;display:flex;justify-content:center}
+#app{width:100%;max-width:980px;padding:10px 12px 24px}
+h1{font-size:18px;margin:6px 0 8px;letter-spacing:.5px}
+h1 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.stat{background:var(--panel);border-radius:8px;padding:6px 12px;font-weight:600;min-width:92px}
+.stat span{color:var(--muted);font-weight:400;margin-right:6px}
+#lives b{color:var(--bad)}#gold b{color:var(--gold)}
+button{font:inherit;color:var(--ink);background:var(--panel2);border:1px solid #2f3d50;border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);color:#06222c;border-color:var(--accent);font-weight:700}
+button.primary kbd{background:rgba(0,0,0,.18);border-color:transparent;color:#06222c}
+button.on{border-color:var(--good);color:var(--good)}
+.grow{flex:1}
+#wrap{position:relative;line-height:0}
+canvas{width:100%;height:auto;background:#12281a;border-radius:10px;touch-action:manipulation;display:block}
+.shop{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.shop button{display:flex;flex-direction:column;align-items:flex-start;min-width:150px;text-align:left}
+.shop button.sel{border-color:var(--good);box-shadow:0 0 0 1px var(--good) inset}
+.shop .n{font-weight:700}.shop .c{color:var(--gold)}.shop .d{color:var(--muted);font-size:12px}
+#info{margin-top:10px;background:var(--panel);border-radius:10px;padding:10px 12px;min-height:56px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#info .t{flex:1;min-width:200px}
+.help{color:var(--muted);font-size:12px;margin-top:10px}
+kbd{background:var(--panel2);border:1px solid #2f3d50;border-radius:4px;padding:0 5px;font-size:11px}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>LINE DEFENSE <small>tahan musuh sebelum mencapai markas</small></h1>
+  <div class="bar">
+    <div class="stat" id="lives"><span>Nyawa</span><b>20</b></div>
+    <div class="stat" id="gold"><span>Emas</span><b>0</b></div>
+    <div class="stat" id="wave"><span>Gelombang</span><b>0/15</b></div>
+    <div class="grow"></div>
+    <button id="btnStart" class="primary">Mulai gelombang <kbd>Spasi</kbd></button>
+    <button id="btnAuto" title="Mulai gelombang berikutnya otomatis">Auto: mati</button>
+    <button id="btnSpeed" title="Ganti kecepatan (F)">Kecepatan 1x</button>
+    <button id="btnPause" title="Jeda (P)">Jeda</button>
+  </div>
+  <div id="wrap"><canvas id="c"></canvas></div>
+  <div class="shop" id="shop"></div>
+  <div id="info"></div>
+  <div class="help">
+    Pilih tower (<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>) lalu klik petak kosong untuk membangun. Klik tower untuk upgrade (<kbd>U</kbd>) atau jual (<kbd>S</kbd>).
+    <kbd>Esc</kbd> / klik kanan membatalkan pilihan.
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- konstanta & peta ---------- */
+const CELL = 48, COLS = 20, ROWS = 11, W = COLS * CELL, H = ROWS * CELL, MAXWAVE = 15;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+cv.width = W; cv.height = H;
+
+// jalur dalam koordinat petak [kolom, baris]; titik pertama di luar layar (portal)
+const WPC = [[-1,5],[3,5],[3,1],[7,1],[7,9],[11,9],[11,3],[15,3],[15,8],[19,8]];
+const WP = WPC.map(([c, r]) => ({ x: (c + .5) * CELL, y: (r + .5) * CELL }));
+const segLen = []; let total = 0;
+for (let i = 1; i < WP.length; i++) {
+  const l = Math.hypot(WP[i].x - WP[i-1].x, WP[i].y - WP[i-1].y);
+  segLen.push(l); total += l;
+}
+const pathCells = new Set();
+for (let i = 1; i < WPC.length; i++) {
+  const [c0, r0] = WPC[i-1], [c1, r1] = WPC[i];
+  const dc = Math.sign(c1 - c0), dr = Math.sign(r1 - r0);
+  let c = c0, r = r0;
+  for (;;) { pathCells.add(c + ',' + r); if (c === c1 && r === r1) break; c += dc; r += dr; }
+}
+function posAt(d) {
+  let i = 0;
+  while (i < segLen.length - 1 && d > segLen[i]) { d -= segLen[i]; i++; }
+  const t = Math.max(0, Math.min(1, d / segLen[i])), a = WP[i], b = WP[i+1];
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/* ---------- data musuh & tower ---------- */
+const ET = {
+  basic: { hp: 40,  spd: 62,  rew: 5,  dmg: 1, r: 11, col: '#ff9f68' },
+  fast:  { hp: 26,  spd: 118, rew: 6,  dmg: 1, r: 9,  col: '#ffd166' },
+  tank:  { hp: 170, spd: 42,  rew: 13, dmg: 2, r: 15, col: '#b388ff' },
+  boss:  { hp: 950, spd: 34,  rew: 90, dmg: 6, r: 20, col: '#ff5d73' }
+};
+const TT = {
+  archer: { name: 'Pemanah', cost: 50, range: 3.1, dmg: 11, rate: .42,  col: '#6ee7a0', speed: 520, desc: 'Cepat dan murah' },
+  cannon: { name: 'Meriam',  cost: 95, range: 2.7, dmg: 32, rate: 1.35, col: '#ff9f68', speed: 340, splash: 55, desc: 'Ledakan area' },
+  frost:  { name: 'Es',      cost: 70, range: 2.5, dmg: 4,  rate: .8,   col: '#4cc9f0', speed: 420, slow: .35, desc: 'Memperlambat musuh' }
+};
+const KEYS = { '1': 'archer', '2': 'cannon', '3': 'frost' };
+
+function stats(t) {
+  const b = TT[t.type], l = t.lvl - 1;
+  return {
+    dmg: b.dmg * (1 + .6 * l),
+    range: b.range * (1 + .08 * l) * CELL,
+    rate: b.rate * (1 - .1 * l),
+    splash: b.splash ? b.splash * (1 + .1 * l) : 0,
+    slow: b.slow ? Math.min(.65, b.slow + .1 * l) : 0
+  };
+}
+const upCost = t => Math.round(TT[t.type].cost * .7 * t.lvl);
+const sellVal = t => Math.floor(t.spent * .6);
+
+/* ---------- state ---------- */
+const G = {};
+let speed = 1, paused = false, autoOn = false, hover = null, mouse = { x: 0, y: 0 };
+
+function reset() {
+  Object.assign(G, {
+    gold: 160, lives: 20, wave: 0, active: false, queue: [], spawnT: 0, spawnGap: .7,
+    enemies: [], towers: [], projs: [], fx: [], build: null, sel: null,
+    over: false, won: false, autoT: -1, time: 0
+  });
+  paused = false;
+  refresh();
+}
+
+/* ---------- logika ---------- */
+function startWave() {
+  if (G.active || G.over || G.won || G.wave >= MAXWAVE) return;
+  const n = ++G.wave, list = [];
+  for (let i = 0; i < 6 + n * 2; i++) list.push('basic');
+  if (n >= 3) for (let i = 0; i < 3 + n; i++) list.push('fast');
+  if (n >= 5) for (let i = 0; i < Math.floor((n - 3) / 1.5); i++) list.push('tank');
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  if (n % 5 === 0) for (let i = 0; i < n / 5; i++) list.push('boss');
+  G.queue = list; G.spawnT = 0; G.spawnGap = Math.max(.38, .75 - n * .02);
+  G.active = true; G.autoT = -1;
+  refresh();
+}
+
+function spawn(type) {
+  const b = ET[type], n = G.wave;
+  const sc = type === 'boss' ? 1 + .12 * (n - 1) : 1 + .17 * (n - 1);
+  const hp = Math.round(b.hp * sc);
+  G.enemies.push({ type, hp, max: hp, spd: b.spd, rew: b.rew, dmg: b.dmg, r: b.r, col: b.col,
+    d: 0, x: WP[0].x, y: WP[0].y, slow: 0, slowT: 0, flash: 0, dead: false, reached: false });
+}
+
+function hurt(e, dmg) {
+  if (e.dead) return;
+  e.hp -= dmg; e.flash = .08;
+  if (e.hp <= 0) {
+    e.dead = true; G.gold += e.rew;
+    G.fx.push({ x: e.x, y: e.y - 10, t: .8, text: '+' + e.rew, col: '#ffd166' });
+    refresh();
+  }
+}
+
+function update(dt) {
+  if (G.over || G.won) return;
+  G.time += dt;
+
+  if (G.active && G.queue.length) {
+    G.spawnT -= dt;
+    if (G.spawnT <= 0) { spawn(G.queue.shift()); G.spawnT = G.spawnGap; }
+  }
+
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    e.slowT = Math.max(0, e.slowT - dt); if (!e.slowT) e.slow = 0;
+    e.flash = Math.max(0, e.flash - dt);
+    e.d += e.spd * (1 - e.slow) * dt;
+    if (e.d >= total) {
+      e.dead = true; e.reached = true; G.lives -= e.dmg;
+      G.fx.push({ x: WP[WP.length-1].x, y: WP[WP.length-1].y - 20, t: .9, text: '-' + e.dmg, col: '#ff6b6b' });
+    } else { const p = posAt(e.d); e.x = p.x; e.y = p.y; }
+  }
+
+  for (const t of G.towers) {
+    t.cd -= dt;
+    const s = stats(t);
+    let best = null;
+    for (const e of G.enemies) {
+      if (e.dead) continue;
+      if (Math.hypot(e.x - t.x, e.y - t.y) <= s.range + e.r && (!best || e.d > best.d)) best = e;
+    }
+    if (best) {
+      t.ang = Math.atan2(best.y - t.y, best.x - t.x);
+      if (t.cd <= 0) {
+        t.cd = s.rate;
+        G.projs.push({ x: t.x, y: t.y, target: best, speed: TT[t.type].speed, dmg: s.dmg, splash: s.splash, slow: s.slow, col: TT[t.type].col });
+      }
+    }
+  }
+
+  for (const p of G.projs) {
+    const e = p.target;
+    if (e.dead) { p.gone = true; continue; }
+    const dx = e.x - p.x, dy = e.y - p.y, dist = Math.hypot(dx, dy), step = p.speed * dt;
+    if (dist <= step + e.r * .6) {
+      p.gone = true;
+      if (p.splash) {
+        for (const o of G.enemies) if (!o.dead && Math.hypot(o.x - e.x, o.y - e.y) <= p.splash) hurt(o, p.dmg);
+        G.fx.push({ x: e.x, y: e.y, t: .25, ring: p.splash, col: p.col });
+      } else hurt(e, p.dmg);
+      if (p.slow && !e.dead) { e.slow = Math.max(e.slow, p.slow); e.slowT = 1.6; }
+    } else { p.x += dx / dist * step; p.y += dy / dist * step; }
+  }
+
+  for (const f of G.fx) f.t -= dt;
+  G.enemies = G.enemies.filter(e => !e.dead);
+  G.projs = G.projs.filter(p => !p.gone);
+  G.fx = G.fx.filter(f => f.t > 0);
+
+  if (G.lives <= 0) { G.lives = 0; G.over = true; refresh(); return; }
+
+  if (G.active && !G.queue.length && !G.enemies.length) {
+    G.active = false;
+    G.gold += 25 + G.wave * 4;
+    if (G.wave >= MAXWAVE) G.won = true;
+    else if (autoOn) G.autoT = 3;
+    refresh();
+  }
+  if (G.autoT >= 0) { G.autoT -= dt; if (G.autoT < 0) { G.autoT = -1; startWave(); } }
+}
+
+/* ---------- aksi pemain ---------- */
+const towerAt = (c, r) => G.towers.find(t => t.c === c && t.r === r);
+const inGrid = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS;
+const canPlace = (c, r) => inGrid(c, r) && !pathCells.has(c + ',' + r) && !towerAt(c, r);
+
+function place(c, r) {
+  const b = TT[G.build];
+  if (!b || !canPlace(c, r) || G.gold < b.cost) return;
+  G.gold -= b.cost;
+  const t = { type: G.build, c, r, x: (c + .5) * CELL, y: (r + .5) * CELL, lvl: 1, cd: 0, ang: -Math.PI / 2, spent: b.cost };
+  G.towers.push(t); G.sel = t;
+  refresh();
+}
+function upgrade() {
+  const t = G.sel; if (!t || t.lvl >= 3) return;
+  const c = upCost(t); if (G.gold < c) return;
+  G.gold -= c; t.spent += c; t.lvl++; refresh();
+}
+function sell() {
+  const t = G.sel; if (!t) return;
+  G.gold += sellVal(t); G.towers = G.towers.filter(x => x !== t); G.sel = null; refresh();
+}
+function setBuild(type) { G.build = G.build === type ? null : type; if (G.build) G.sel = null; refresh(); }
+
+/* ---------- input ---------- */
+function cellFromEvent(ev) {
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left) * W / r.width, y = (ev.clientY - r.top) * H / r.height;
+  mouse = { x, y };
+  return { c: Math.floor(x / CELL), r: Math.floor(y / CELL) };
+}
+cv.addEventListener('pointermove', ev => { hover = cellFromEvent(ev); });
+cv.addEventListener('pointerleave', () => { hover = null; });
+cv.addEventListener('contextmenu', ev => { ev.preventDefault(); G.build = null; refresh(); });
+cv.addEventListener('pointerdown', ev => {
+  if (ev.button === 2) return;
+  const { c, r } = cellFromEvent(ev); hover = { c, r };
+  if (G.over || G.won) { reset(); return; }
+  if (G.build) {
+    const t = towerAt(c, r);
+    if (t) { G.sel = t; G.build = null; refresh(); } else place(c, r);
+  } else {
+    G.sel = towerAt(c, r) || null; refresh();
+  }
+});
+addEventListener('keydown', ev => {
+  const k = ev.key.toLowerCase();
+  if (KEYS[k]) setBuild(KEYS[k]);
+  else if (k === ' ') { ev.preventDefault(); startWave(); }
+  else if (k === 'u') upgrade();
+  else if (k === 's') sell();
+  else if (k === 'p') togglePause();
+  else if (k === 'f') cycleSpeed();
+  else if (k === 'escape') { G.build = null; G.sel = null; refresh(); }
+});
+
+const $ = id => document.getElementById(id);
+function togglePause() { paused = !paused; refresh(); }
+function cycleSpeed() { speed = speed % 3 + 1; refresh(); }
+$('btnStart').onclick = startWave;
+$('btnPause').onclick = togglePause;
+$('btnSpeed').onclick = cycleSpeed;
+$('btnAuto').onclick = () => { autoOn = !autoOn; if (!autoOn) G.autoT = -1; refresh(); };
+
+/* ---------- UI (DOM) ---------- */
+const shop = $('shop');
+for (const [k, b] of Object.entries(TT)) {
+  const el = document.createElement('button');
+  el.dataset.type = k;
+  el.innerHTML = `<span class="n">${b.name} <span class="c">${b.cost}</span></span><span class="d">${b.desc}</span>`;
+  el.onclick = () => setBuild(k);
+  shop.appendChild(el);
+}
+function refresh() {
+  $('lives').lastElementChild.textContent = G.lives;
+  $('gold').lastElementChild.textContent = G.gold;
+  $('wave').lastElementChild.textContent = G.wave + '/' + MAXWAVE;
+  $('btnStart').disabled = G.active || G.over || G.won || G.wave >= MAXWAVE;
+  $('btnStart').firstChild.textContent = G.wave === 0 ? 'Mulai gelombang ' : 'Gelombang berikutnya ';
+  $('btnAuto').textContent = 'Auto: ' + (autoOn ? 'nyala' : 'mati'); $('btnAuto').classList.toggle('on', autoOn);
+  $('btnSpeed').textContent = 'Kecepatan ' + speed + 'x';
+  $('btnPause').textContent = paused ? 'Lanjut' : 'Jeda'; $('btnPause').classList.toggle('on', paused);
+  for (const el of shop.children) {
+    el.classList.toggle('sel', G.build === el.dataset.type);
+    el.disabled = G.gold < TT[el.dataset.type].cost && G.build !== el.dataset.type;
+  }
+  const info = $('info'), t = G.sel;
+  if (t) {
+    const s = stats(t), b = TT[t.type];
+    info.innerHTML = `<div class="t"><b>${b.name}</b> level ${t.lvl}/3 &middot; damage ${s.dmg.toFixed(0)} &middot; jangkauan ${(s.range / CELL).toFixed(1)} petak`
+      + (s.splash ? ` &middot; area ${s.splash.toFixed(0)}px` : '') + (s.slow ? ` &middot; slow ${Math.round(s.slow * 100)}%` : '') + `</div>`
+      + `<button id="bUp" ${t.lvl >= 3 || G.gold < upCost(t) ? 'disabled' : ''}>${t.lvl >= 3 ? 'Level maks' : 'Upgrade ' + upCost(t)} <kbd>U</kbd></button>`
+      + `<button id="bSell">Jual +${sellVal(t)} <kbd>S</kbd></button>`;
+    $('bUp').onclick = upgrade; $('bSell').onclick = sell;
+  } else if (G.build) {
+    const b = TT[G.build];
+    info.innerHTML = `<div class="t"><b>${b.name}</b> &mdash; ${b.desc}. Klik petak kosong (bukan jalur) untuk membangun.</div>`;
+  } else {
+    info.innerHTML = `<div class="t" style="color:var(--muted)">Pilih tower di atas, atau klik tower yang sudah dibangun.</div>`;
+  }
+}
+
+/* ---------- gambar ---------- */
+function circle(x, y, r, fill, stroke) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    ctx.fillStyle = (c + r) % 2 ? '#14301d' : '#12281a'; ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+  }
+  // jalur
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); WP.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  ctx.strokeStyle = '#4a3b2a'; ctx.lineWidth = CELL * .86; ctx.stroke();
+  ctx.strokeStyle = '#5c4a35'; ctx.lineWidth = CELL * .6; ctx.stroke();
+  ctx.setLineDash([10, 14]); ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+  // portal & markas
+  ctx.fillStyle = '#ff6b6b'; ctx.beginPath();
+  ctx.moveTo(6, WP[0].y - 14); ctx.lineTo(28, WP[0].y); ctx.lineTo(6, WP[0].y + 14); ctx.fill();
+  const bp = WP[WP.length - 1];
+  ctx.fillStyle = '#4cc9f0'; ctx.fillRect(bp.x - 17, bp.y - 17, 34, 34);
+  ctx.fillStyle = '#06222c'; ctx.fillRect(bp.x - 7, bp.y - 7, 14, 14);
+
+  // area tower terpilih / pratinjau bangun
+  const showRange = (x, y, rng, ok) => {
+    circle(x, y, rng, ok ? 'rgba(110,231,160,.10)' : 'rgba(255,107,107,.12)');
+    ctx.lineWidth = 1.5; circle(x, y, rng, null, ok ? 'rgba(110,231,160,.5)' : 'rgba(255,107,107,.5)');
+  };
+  if (G.sel) showRange(G.sel.x, G.sel.y, stats(G.sel).range, true);
+  if (G.build && hover && inGrid(hover.c, hover.r)) {
+    const ok = canPlace(hover.c, hover.r) && G.gold >= TT[G.build].cost;
+    const hx = (hover.c + .5) * CELL, hy = (hover.r + .5) * CELL;
+    showRange(hx, hy, TT[G.build].range * CELL, ok);
+    ctx.globalAlpha = .6; circle(hx, hy, 14, TT[G.build].col); ctx.globalAlpha = 1;
+  }
+
+  // tower
+  for (const t of G.towers) {
+    const col = TT[t.type].col;
+    circle(t.x, t.y, 19, '#0b1016'); circle(t.x, t.y, 15, col);
+    ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.ang);
+    ctx.fillStyle = '#0b1016'; ctx.fillRect(0, -4, 22, 8); ctx.restore();
+    circle(t.x, t.y, 6, '#0b1016');
+    for (let i = 0; i < t.lvl; i++) circle(t.x - (t.lvl - 1) * 4 + i * 8, t.y + 24 - 3, 2.5, '#ffd166');
+    if (t === G.sel) { ctx.lineWidth = 2; circle(t.x, t.y, 21, null, '#fff'); }
+  }
+
+  // musuh
+  for (const e of G.enemies) {
+    circle(e.x, e.y, e.r, e.flash > 0 ? '#fff' : (e.slow ? '#7fd8f5' : e.col));
+    ctx.lineWidth = 2; circle(e.x, e.y, e.r, null, 'rgba(0,0,0,.45)');
+    const w = e.r * 2.2, f = Math.max(0, e.hp / e.max);
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(e.x - w / 2, e.y - e.r - 9, w, 4);
+    ctx.fillStyle = f > .5 ? '#6ee7a0' : f > .25 ? '#ffd166' : '#ff6b6b'; ctx.fillRect(e.x - w / 2, e.y - e.r - 9, w * f, 4);
+  }
+  // proyektil & efek
+  for (const p of G.projs) circle(p.x, p.y, p.splash ? 5 : 3.5, p.col);
+  ctx.textAlign = 'center'; ctx.font = 'bold 14px system-ui,sans-serif';
+  for (const f of G.fx) {
+    if (f.ring) { ctx.globalAlpha = Math.max(0, f.t / .25); ctx.lineWidth = 3; circle(f.x, f.y, f.ring * (1 - f.t / .25 * .4), null, f.col); ctx.globalAlpha = 1; }
+    else { ctx.globalAlpha = Math.min(1, f.t * 2); ctx.fillStyle = f.col; ctx.fillText(f.text, f.x, f.y - (.8 - f.t) * 24); ctx.globalAlpha = 1; }
+  }
+  // overlay
+  const banner = (title, sub, col) => {
+    ctx.fillStyle = 'rgba(8,12,18,.72)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = col; ctx.font = 'bold 54px system-ui,sans-serif'; ctx.fillText(title, W / 2, H / 2 - 4);
+    ctx.fillStyle = '#e8edf3'; ctx.font = '18px system-ui,sans-serif'; ctx.fillText(sub, W / 2, H / 2 + 34);
+  };
+  if (G.over) banner('KALAH', 'Markas jebol di gelombang ' + G.wave + '. Klik untuk main lagi.', '#ff6b6b');
+  else if (G.won) banner('MENANG!', 'Semua ' + MAXWAVE + ' gelombang berhasil ditahan. Klik untuk main lagi.', '#6ee7a0');
+  else if (paused) banner('JEDA', 'Tekan P atau tombol Lanjut', '#4cc9f0');
+}
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (!paused) for (let i = 0; i < speed; i++) update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+reset();
+requestAnimationFrame(frame);
+
+// hook kecil untuk pengujian otomatis
+window.__LD = { G, startWave, update, place, setBuild, upgrade, sell, reset, canPlace, pathCells, total, CELL, TT };
+})();
+</script>
+</body>
+</html>
