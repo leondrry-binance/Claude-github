@@ -108,6 +108,20 @@ body{padding-block:4px;padding-left:max(8px,env(safe-area-inset-left,0px));paddi
 .sk{padding:2px 3px;font-size:8px;line-height:1.15;white-space:nowrap;text-overflow:ellipsis}
 button{padding:3px 5px}
 }
+@media(orientation:landscape) and (max-height:560px){
+body{padding-block:3px}
+#app{flex-direction:row;gap:4px;height:calc(100% - 2px)}
+#stage{flex:1 1 0;min-width:0;min-height:0}
+#deck{flex:0 0 236px;width:236px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:3px;align-content:start}
+.lanes{grid-column:1/-1;flex-direction:row;width:100%;min-width:0;gap:3px}
+.lrow{flex:1;min-width:0}
+.ln,.help{font-size:9px;padding:2px 3px;min-width:0}
+.card{flex:none;max-width:none;min-width:0;gap:2px}
+.dep{padding:2px 4px;font-size:9px}.dep .n{font-size:9px;overflow:hidden}.dep em{font-size:9px}.dep .sw{width:6px;height:6px;margin-right:3px}
+.sk{padding:2px 3px;font-size:8px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{padding:2px 4px}
+#overlay{padding:6px}#overlay .box{padding:10px;gap:6px}#overlay h1{font-size:11px}#overlay p{font-size:11px}
+}
 @keyframes pulse{50%{border-color:var(--gold)}}
 @media (prefers-reduced-motion:reduce){.sk:not(:disabled),.help.alert{animation:none}#toast,.bar i{transition:none}}
 </style>
