@@ -108,7 +108,10 @@ body{padding-block:4px;padding-left:max(8px,env(safe-area-inset-left,0px));paddi
 .sk{padding:2px 3px;font-size:8px;line-height:1.15;white-space:nowrap;text-overflow:ellipsis}
 button{padding:3px 5px}
 }
+#dtg{display:none}
 @media(orientation:landscape) and (max-height:560px){
+#dtg{display:block;position:fixed;right:4px;bottom:4px;z-index:30;font-size:10px;padding:3px 7px;background:#10151cdd;border-color:var(--accent)}
+body.dk0 #deck{display:none}
 body{padding-block:3px}
 #app{flex-direction:row;gap:4px;height:calc(100% - 2px)}
 #stage{flex:1 1 0;min-width:0;min-height:0}
@@ -157,6 +160,7 @@ button{padding:2px 4px}
     </div>
   </main>
   <footer id="deck"></footer>
+  <button id="dtg" type="button" title="Sembunyikan/tampilkan panel (tombol H)">Panel ▶</button>
 </div>
 
 <script>
@@ -1318,6 +1322,11 @@ function setZoom(i){
   $('zm').textContent='Layar: '+ZOOMS[zi].n;
   resize();
 }
+(function(){const b=$('dtg');let on=false;
+function ap(){document.body.classList.toggle('dk0',on);b.textContent=on?'\u25c0 Panel':'Panel \u25b6';resize();}
+try{on=localStorage.getItem('jp_dk0')==='1';}catch(e){}
+b.addEventListener('click',()=>{on=!on;try{localStorage.setItem('jp_dk0',on?'1':'0');}catch(e){}ap();});
+window.__dk=()=>{on=!on;ap();};ap();})();
 window.addEventListener('resize',resize);
 if(window.ResizeObserver)new ResizeObserver(resize).observe($('stage'));
 $('zm').textContent='Layar: '+ZOOMS[zi].n;
