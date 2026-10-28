@@ -66,6 +66,8 @@ button:disabled{cursor:default}
 #overlay .box{max-width:480px;background:var(--panel);border:2px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:12px}
 #overlay h1{font:15px/1.5 var(--px);margin:0;text-wrap:balance}
 #overlay p{margin:0;color:var(--muted);max-width:60ch}
+#overlay button#ovB2{background:#c0562b;border-color:#ff9a6b;color:#fff}
+body.dota .card[data-h="0"]{display:none}
 #overlay button{align-self:flex-start;background:var(--go);color:#10200c;border-color:#8fd47e;font-weight:700;padding:9px 16px}
 #deck{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
 .lanes{display:flex;flex-direction:column;gap:3px;min-width:132px}
@@ -155,7 +157,8 @@ button{padding:2px 4px}
       <div class="box">
         <h1 id="ovT">Jalur Perang</h1>
         <p id="ovP">Ada 3 lane. Pasukanmu berjalan sendiri dari benteng kiri ke benteng musuh di kanan. Pilih lane lalu keluarkan pasukan. Kalau musuh menembus lane yang kosong, awan peringatan muncul dan pasukan dari lane lain bisa dikirim untuk menghadang, otomatis atau manual, dengan bonus serang dan kecepatan. Geser layar untuk menggeser kamera.</p>
-        <button id="ovB" type="button">Mulai Stage 1</button>
+        <button id="ovB" type="button">Standard</button>
+        <button id="ovB2" type="button">Dota (otomatis)</button>
       </div>
     </div>
   </main>
@@ -167,7 +170,7 @@ button{padding:2px 4px}
 (()=>{
 const ZOOMS=[{n:'Zoom 3x',f:3},{n:'Zoom 2x',f:2},{n:'Zoom 1,5x',f:1.5},{n:'Normal',f:1}];
 let zi=0;try{const z=localStorage.getItem('jp_zoom2');if(z!==null&&+z>=0&&+z<ZOOMS.length)zi=+z;}catch(e){}
-let VW=960,VH=400,TOP=0,HUDU=0;const WH=400,WW=1500,GY=250,BY=338,MAXS=5;
+let MODE='std';let VW=960,VH=400,TOP=0,HUDU=0;const WH=400,WW=1500,GY=250,BY=338,MAXS=5;
 const LANEY=[272,314,356];
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 const $=id=>document.getElementById(id);
@@ -230,6 +233,7 @@ function newStage(n){
   for(let l=0;l<3;l++)for(const tx of[330,590])S.towers.push({tower:true,type:'barikade',team:0,outer:tx===590,x:tx,lane:l,y:LANEY[l]+4,jit:0,hp:tx===590?300:400,max:tx===590?300:400,flash:0,dying:0,gone:false,sc:1.2,cd:rnd(.5,2),rec:0,id:'T'+l+tx});
   {const m=1+.18*(n-1);for(let l=0;l<3;l++)for(const tx of[WW-330,WW-590]){const eh=Math.round((tx===WW-590?380:500)*m);S.towers.push({tower:true,type:'barikade',team:1,outer:tx===WW-590,x:tx,lane:l,y:LANEY[l]+4,jit:0,hp:eh,max:eh,flash:0,dying:0,gone:false,sc:1.2,cd:rnd(.8,2.5),rec:0,id:'E'+l+tx});}}
   DECK.forEach(k=>{S.cd[k]=0;S.skillCd[k]=0;});
+  S.wave=0;S.waveT=4;if(MODE==='dota')DECK.forEach(k=>{if(DEF[k].hero)S.cd[k]=rnd(3,9);});
   lastKey='';
 }
 newStage(1);
@@ -263,6 +267,7 @@ function deploy(k){
     const tp=d.pair||[k],rd=S.units.filter(u=>u.team===0&&tp.includes(u.type)&&u.dying<=0&&u.ultReady&&!u.ult);
     if(rd.length){let ok=false;for(const u of rd){startUlt(u);if(u.ult){u.ultReady=false;ok=true;}}if(!ok){toast('Lawan masih jauh');sfx('err');}return;}
   }
+  if(MODE==='dota'){toast('Mode Dota: pasukan muncul otomatis');return;}
   if(S.cd[k]>0)return;
   if(S.money<d.cost){toast('Uang kurang');sfx('err');return;}
   const types=d.pair||[k];
@@ -282,6 +287,17 @@ function spawnEnemy(){
   S.lastELane=lane;
   const nu=mkUnit(t,1,WW-120,lane,m);
   if(S.titanLeft>0&&(t==='ogre'||t==='goblin')){if(Math.random()<S.titanP){nu.shifter=true;S.titanLeft--;S.titanP=.15;}else S.titanP=Math.min(.6,S.titanP+.04);}
+}
+function spawnWave(){
+  const comp=S.wave>5?['perisai','prajurit','prajurit','prajurit','pemanah']:['prajurit','prajurit','pemanah'],
+    em={prajurit:'goblin',pemanah:'goblinpanah',perisai:'ogre'},m=1+.18*(S.stage-1);
+  let ours=S.units.filter(u=>u.team===0&&!u.dying).length;
+  for(let l=0;l<3;l++)comp.forEach((t,i)=>{
+    if(ours<70){mkUnit(t,0,120-i*20,l);ours++;}
+    const nu=mkUnit(em[t],1,WW-120+i*20,l,m);
+    if(S.titanLeft>0&&(nu.type==='ogre'||nu.type==='goblin')){if(Math.random()<S.titanP){nu.shifter=true;S.titanLeft--;S.titanP=.15;}else S.titanP=Math.min(.6,S.titanP+.04);}
+  });
+  toast('Wave '+S.wave+(S.wave>5?' (+Perisai)':''));sfx('spawn');
 }
 function spawnBoss(){
   const lane=Math.floor(Math.random()*3);
@@ -474,8 +490,16 @@ function update(dt){
   S.time+=dt;
   S.money=Math.min(maxMoney(),S.money+income()*dt);
   for(const k of DECK){if(S.cd[k]>0)S.cd[k]-=dt;if(S.skillCd[k]>0)S.skillCd[k]-=dt;}
+  if(MODE==='dota'){
+    S.waveT-=dt;if(S.waveT<=0){S.wave++;S.waveT=20;spawnWave();}
+    for(const k of DECK){const d=DEF[k];if(!d.hero||S.cd[k]>0)continue;const tp=d.pair||[k];
+      if(S.units.some(u=>u.team===0&&tp.includes(u.type)&&!u.dying))continue;
+      const lane=Math.floor(Math.random()*3),x=rnd(140,WW*.45);let f=null;
+      tp.forEach((t,i)=>{const q=mkUnit(t,0,x-i*44,lane);q.jit=i?9:-9;if(!f)f=q;});
+      S.cd[k]=d.cd;S.skillCd[k]=Math.max(S.skillCd[k],2);ring(f.x,f.y,60,'#f2c14e');floatText(f.x,f.y-60,d.name+' muncul!','#f2c14e');sfx('spawn');}
+  }else{
   S.spawnT-=dt;
-  if(S.spawnT<=0){spawnEnemy();S.spawnT=S.st.every*rnd(.8,1.2);}
+  if(S.spawnT<=0){spawnEnemy();S.spawnT=S.st.every*rnd(.8,1.2);}}
   if(!S.bossDone&&S.eb.hp<=S.eb.max*.6){S.bossDone=true;spawnBoss();}
   for(const u of S.units){
     if(u.flash>0)u.flash-=dt;
@@ -727,7 +751,7 @@ function endStage(win){
   if(win){
     sfx('win');
     if(S.stage<MAXS)showOverlay('Stage '+S.stage+' Selesai','Benteng musuh runtuh. Stage berikutnya lebih kuat: musuh lebih banyak dan lebih tangguh.','Mulai Stage '+(S.stage+1),()=>{newStage(S.stage+1);hideOverlay();});
-    else showOverlay('Kamu Menang','Kelima stage selesai. Kerajaan aman.','Main Dari Awal',()=>{newStage(1);hideOverlay();});
+    else showOverlay('Kamu Menang','Kelima stage selesai. Kerajaan aman.','Main Dari Awal',()=>{showModeMenu();});
   }else{
     sfx('lose');
     showOverlay('Benteng Jatuh','Pasukan musuh menembus pertahananmu di stage '+S.stage+'. Jaga ketiga lane, kirim bantuan lebih cepat, dan atur waktu skill hero.','Ulangi Stage '+S.stage,()=>{newStage(S.stage);hideOverlay();});
@@ -1228,7 +1252,7 @@ const deckEl=$('deck'),cards={},laneEls=[];
   deckEl.appendChild(box);
 })();
 DECK.forEach((k,i)=>{
-  const d=DEF[k],wrap=document.createElement('div');wrap.className='card';
+  const d=DEF[k],wrap=document.createElement('div');wrap.className='card';wrap.dataset.h=d.hero?1:0;
   const dep=document.createElement('button');dep.type='button';dep.className='dep';
   dep.innerHTML='<span class="lbl n"><span><i class="sw" style="background:'+d.col+'"></i>'+(d.hero?'<b class="st"></b>':'')+(i+1)+' '+(k==='kangbewok'?'K.Bewok':d.name)+'</span>'+(d.hero?'<small>HERO</small>':'')+'</span><span class="lbl"><em>'+d.cost+' uang</em></span><i class="cdf"></i>';
   dep.addEventListener('click',()=>{initAudio();deploy(k);});
@@ -1274,9 +1298,11 @@ function updateUI(){
     }
   }
 }
-function showOverlay(t,p,b,fn){$('ovT').textContent=t;$('ovP').textContent=p;$('ovB').textContent=b;$('overlay').hidden=false;$('ovB').onclick=()=>{initAudio();fn();};}
+function showOverlay(t,p,b,fn){$('ovB2').hidden=true;$('ovT').textContent=t;$('ovP').textContent=p;$('ovB').textContent=b;$('overlay').hidden=false;$('ovB').onclick=()=>{initAudio();fn();};}
 function hideOverlay(){$('overlay').hidden=true;}
-$('ovB').onclick=()=>{initAudio();hideOverlay();};
+function startMode(m){MODE=m;document.body.classList.toggle('dota',m==='dota');newStage(1);hideOverlay();toast(m==='dota'?'Mode Dota: pasukan & hero muncul otomatis':'Mode Standard');}
+function showModeMenu(){$('ovT').textContent='Jalur Perang';$('ovP').textContent='Pilih mode. Standard: kamu memanggil pasukan sendiri. Dota: pasukan kedua sisi muncul otomatis tiap wave, hero muncul sendiri di tempat acak; kamu mengatur special (ketuk hero) dan bantuan antar lane.';$('ovB').textContent='Standard';$('ovB2').hidden=false;$('overlay').hidden=false;$('ovB').onclick=()=>{initAudio();startMode('std');};$('ovB2').onclick=()=>{initAudio();startMode('dota');};}
+showModeMenu();
 $('wal').addEventListener('click',()=>{upWallet();});
 function upWallet(){
   if(S.over||S.wlv>=5)return;const c=WALLET_COST[S.wlv-1];
