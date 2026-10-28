@@ -492,11 +492,15 @@ function update(dt){
   for(const k of DECK){if(S.cd[k]>0)S.cd[k]-=dt;if(S.skillCd[k]>0)S.skillCd[k]-=dt;}
   if(MODE==='dota'){
     S.waveT-=dt;if(S.waveT<=0){S.wave++;S.waveT=20;spawnWave();}
-    for(const k of DECK){const d=DEF[k];if(!d.hero||S.cd[k]>0)continue;const tp=d.pair||[k];
-      if(S.units.some(u=>u.team===0&&tp.includes(u.type)&&!u.dying))continue;
-      const lane=Math.floor(Math.random()*3),x=rnd(140,WW*.45);let f=null;
+    S.hA=S.hA||{};S.dc=S.dc||{};
+    for(const k of DECK){const d=DEF[k];if(!d.hero)continue;const tp=d.pair||[k];
+      const al=S.units.some(u=>u.team===0&&tp.includes(u.type)&&!u.dying);
+      if(S.hA[k]&&!al){S.dc[k]=(S.dc[k]||0)+1;S.cd[k]=Math.min(90,10+8*(S.dc[k]-1));toast(d.name+' gugur! Muncul lagi '+Math.round(S.cd[k])+' dtk');}
+      S.hA[k]=al;
+      if(al||S.cd[k]>0)continue;
+      const lane=Math.floor(Math.random()*3),x=120;let f=null;
       tp.forEach((t,i)=>{const q=mkUnit(t,0,x-i*44,lane);q.jit=i?9:-9;if(!f)f=q;});
-      S.cd[k]=d.cd;S.skillCd[k]=Math.max(S.skillCd[k],2);ring(f.x,f.y,60,'#f2c14e');floatText(f.x,f.y-60,d.name+' muncul!','#f2c14e');sfx('spawn');}
+      S.hA[k]=true;S.skillCd[k]=Math.max(S.skillCd[k],2);ring(f.x,f.y,60,'#f2c14e');floatText(f.x,f.y-60,d.name+' muncul!','#f2c14e');sfx('spawn');}
   }else{
   S.spawnT-=dt;
   if(S.spawnT<=0){spawnEnemy();S.spawnT=S.st.every*rnd(.8,1.2);}}
@@ -1290,7 +1294,7 @@ function updateUI(){
     if(d.hero){
       const tp=d.pair||[k];const alive=S.units.some(u=>u.team===0&&tp.includes(u.type)&&u.dying<=0);
       const tu=S.units.filter(u=>u.team===0&&tp.includes(u.type)&&u.dying<=0),nn=tu.length,mn=Math.min(...tu.map(u=>u.hp/u.max),1);
-      const stt=!nn?'d':(mn<.5?'l':'a'),stx=!nn?'\u2620':'\u2764'+(tp.length>1?nn:'');
+      const stt=!nn?'d':(mn<.5?'l':'a'),stx=!nn?('\u2620'+(MODE==='dota'&&S.cd[k]>0?Math.ceil(S.cd[k]):'')):'\u2764'+(tp.length>1?nn:'');
       if(c.st._k!==stt+stx){c.st._k=stt+stx;c.st.className='st '+stt;c.st.textContent=stx;}
       const ready=alive&&S.skillCd[k]<=0&&!S.over;
       if(c.sk.disabled===ready)c.sk.disabled=!ready;
