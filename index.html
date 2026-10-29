@@ -795,9 +795,9 @@ function update(dt){
       if(ah&&!findTarget(u)){u.fdir=u.dir;continue;}
     }
     if(u.rush>0&&u.team===1&&u.dying<=0){u.rush-=dt;u.changing=false;u.fdir=u.dir;const pb=S.pb;
-      if(Math.abs(u.x-pb.x)-(pb.colossal?100:50)<=d.range+8){if(u.cd<=0)attack(u,pb);}else{u.x=clamp(u.x+u.dir*spd*2*dt,70,WW-70);u.walk+=dt*spd*.4;}
-      u._ra=(u._ra||0)-dt;if(u._ra<=0){u._ra=.5;let hit=0;for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-u.x)<80*(u.sc>1.5?1.4:1)&&Math.abs(o.y-u.y)<48){dmgTarget(o,d.dmg*.45,u);o.kb=o.sc>1.5?30:150;o.flash=.15;hit=1;}
-        for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-u.x)<80&&Math.abs(w.y-u.y)<50){dmgTarget(w,d.dmg*.6,u);hit=1;}
+      if(Math.abs(u.x-pb.x)-(pb.colossal?100:50)<=d.range+8){if(u.cd<=0)attack(u,pb);}else{u.x=clamp(u.x+u.dir*spd*(u.sc>1.5&&u.type!=='ogre'?1.4:2)*dt,70,WW-70);u.walk+=dt*spd*.4;}
+      u._ra=(u._ra||0)-dt;if(u._ra<=0){u._ra=.5;let hit=0;for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-u.x)<80*(u.sc>1.5?1.4:1)&&Math.abs(o.y-u.y)<48){dmgTarget(o,d.dmg*(u.type==='titan'?.25:.45),u);o.kb=o.sc>1.5?30:150;o.flash=.15;hit=1;}
+        for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-u.x)<80&&Math.abs(w.y-u.y)<50){dmgTarget(w,d.dmg*(u.type==='titan'?.3:.6),u);hit=1;}
         if(hit){ring(u.x,u.y-12,50,'#ff7a2a');S.shake=Math.max(S.shake,.1);}}
       continue;}
     if(u.focusT>0){u.focusT-=dt;const f=u.focus;
@@ -1146,8 +1146,8 @@ function critGo(u){
   u.cdone=1;const T=u.type;
   if(T==='ttitan'){u.fzT=10;u.clife=10;floatText(u.x,u.y-u.sc*40,'LINCAH 10s!','#ff3c2a');
     {const m=1+.18*(S.stage-1);bubble(u.x,u.y-u.sc*45,'OGRE! TITAN! SERBU!!',1.8,'#b00020');toast('ATTACK TITAN MEMANGGIL PASUKAN SERBU!');sfx('boom');S.shake=Math.max(S.shake,.7);
-      const ty=['ogre','ogre','ogre','ogre','ogre','titan','titan'];
-      ty.forEach((k,i)=>{const o=mkUnit(k,1,Math.min(WW-120,u.x+30+i*14),i%3,m);o.x=Math.min(WW-110,u.x+rnd(20,110));o.rush=11;o.buff=11;o.inv=.8;ring(o.x,o.y-14,60,'#ff3c2a');burst(o.x,o.y-20,'#ff7a2a',12,220);});
+      const ty=['ogre','ogre','ogre','ogre','ogre','titan'];
+      ty.forEach((k,i)=>{const o=mkUnit(k,1,Math.min(WW-120,u.x+30+i*14),i%3,k==='titan'?m*.5:m);o.x=Math.min(WW-110,u.x+rnd(20,110));o.rush=11;o.buff=11;o.inv=.8;ring(o.x,o.y-14,60,'#ff3c2a');burst(o.x,o.y-20,'#ff7a2a',12,220);});
       ring(u.x,u.y-20,160,'#ff3c2a');}S.shake=Math.max(S.shake,.6);sfx('boom');}
   else if(T==='atitan'){u.counter=10;u.armor=10;floatText(u.x,u.y-u.sc*40,'ARMOR KERAS 10s','#ffe066');ring(u.x,u.y-20,120,'#ffe066');sfx('boom');}
   else if(T==='btitan'){u.rainD=1;u.rain=6;u.rT=0;bubble(u.x,u.y-150,'LONCAT & HUJAN BATU!!',1.4,'#b00020');ring(u.x,u.y-20,120,'#a89a80');S.shake=Math.max(S.shake,.5);sfx('boom');}
