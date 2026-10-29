@@ -322,15 +322,18 @@ function colThrow(sx,sy){
   else{u.thr={sx:u.x,gx:sx-24,g:0,gd:.95,tx:0,tgx:tg.x+rnd(-20,20),t:0,dur:1.2,rel:1};toast('LEMPAR PASUKAN SENDIRI!');}
   bubble(sx,sy-30,'HAP!',.9,'#b00020');
 }
-function boomFx(x,y,big){
+function blastBase(team,x,r,d){const b=team===0?S.pb:S.eb;if(b&&b.hp>0&&Math.abs(b.x-x)<r+50)dmgTarget(b,d,null);}
+function boomFx(x,y,big,team){
   ring(x,y-8,big?150:110,'#ffb03c');ring(x,y-8,big?100:70,'#ff5a2a');ring(x,y-8,big?55:40,'#fff');
   burst(x,y-12,'#ffe27a',big?34:24,360);burst(x,y-12,'#ff7a2a',big?30:20,300);burst(x,y-12,'#c9301c',16,240);burst(x,y-4,'#3a3a3a',10,160);
-  S.shake=Math.max(S.shake,big?.9:.6);sfx('boom');S.fires.push({x,y,r:big?95:72,life:big?5.5:4.2,m:big?5.5:4.2,t:0});S.flashT=big?.25:.15;
+  S.shake=Math.max(S.shake,big?.9:.6);sfx('boom');S.fires.push({x,y,r:big?95:72,life:big?5.5:4.2,m:big?5.5:4.2,t:0,team:team==null?1:team});S.flashT=big?.25:.15;
 }
 function updFires(dt){
   S.flashT=Math.max(0,(S.flashT||0)-dt);if(S.nuke){S.nuke.t+=dt;if(S.nuke.t>=S.nuke.dur)S.nuke=null;}
   for(const f of S.fires){f.life-=dt;f.t-=dt;
-    if(f.t<=0){f.t=.5;for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-f.x)<f.r&&Math.abs(o.y-f.y)<46){dmgTarget(o,6,null);o.burn=Math.max(o.burn||0,1.5);}}}
+    if(f.t<=0){f.t=.5;const vt=1-(f.team==null?1:f.team);for(const o of S.units)if(o.team===vt&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-f.x)<f.r&&Math.abs(o.y-f.y)<46){dmgTarget(o,6,null);o.burn=Math.max(o.burn||0,1.5);}
+      for(const w of S.towers)if(w.team===vt&&!w.gone&&w.dying<=0&&!w.lock&&Math.abs(w.x-f.x)<f.r&&Math.abs(w.y-f.y)<46)dmgTarget(w,9,null);
+      blastBase(vt,f.x,f.r-50,9);}}
   S.fires=S.fires.filter(f=>f.life>0);
 }
 function drawFlame(x,y,w,h){
@@ -352,7 +355,8 @@ function nukeBoom(x){
   ring(x-150,BY,300,'#fff');ring(x-150,BY,520,'#ffb03c');burst(x-150,BY-30,'#fff3a0',50,520);burst(x-150,BY-30,'#ff7a2a',40,460);burst(x-150,BY-30,'#3a3a3a',26,300);
   for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-(x-150))<560){dmgTarget(o,o.hero?150:240,null);o.kb=o.sc>1.5?320:1300;o.sq=.5;o.flash=.5;o.burn=Math.max(o.burn||0,3);}
   for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-(x-150))<560){w.lock=false;dmgTarget(w,99999,null);}
-  for(let i=0;i<7;i++){const fx=clamp(x-150-rnd(0,520),130,WW-130);S.fires.push({x:fx,y:LANEY[i%3],r:78,life:6,m:6,t:0});}
+  blastBase(0,x-150,560,500);
+  for(let i=0;i<7;i++){const fx=clamp(x-150-rnd(0,520),130,WW-130);S.fires.push({x:fx,y:LANEY[i%3],r:78,life:6,m:6,t:0,team:1});}
 }
 function drawColoGlow(E){
   const g=E.glow,pu=.55+.45*Math.sin(S.time*(6+g*22)),cy=BY-110-(E.jz||0),a=(.25+.55*g)*pu;
@@ -378,6 +382,7 @@ function fireLand(fb){
   boomFx(fb.tx,fb.ty,true);floatText(fb.tx,fb.ty-70,'BARIKADE MELEDAK!','#ffb03c');
   for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-fb.tx)<110&&Math.abs(o.y-fb.ty)<56){dmgTarget(o,o.hero?240:210,null);o.kb=o.sc>1.5?280:800;o.sq=.4;o.flash=.35;o.burn=Math.max(o.burn||0,3);}
   for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-fb.tx)<100&&Math.abs(w.y-fb.ty)<56){w.lock=false;dmgTarget(w,99999,null);}
+  blastBase(0,fb.tx,110,120);
 }
 function ehSpawn(){
   const m=1+.18*(S.stage-1);
@@ -687,7 +692,7 @@ function update(dt){
       if(Math.random()<.9)burst(u.x,u.y-u.jz-16,Math.random()<.5?'#ffb03c':'#ff5a2a',1,70);
       if(k>=1){u.jz=0;u.thr=null;boomFx(u.x,u.y,false);u.burn=4;u.flash=.3;
         if(u.team===0){dmgTarget(u,u.hero?85:65,null);for(const o of S.units)if(o!==u&&o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-u.x)<70&&Math.abs(o.y-u.y)<40)dmgTarget(o,30,null);}
-        else{dmgTarget(u,Math.max(5,u.max*.1),null);for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-u.x)<90&&Math.abs(o.y-u.y)<50){dmgTarget(o,o.hero?70:55,null);o.kb=o.sc>1.5?120:400;o.flash=.3;}}}
+        else{dmgTarget(u,Math.max(5,u.max*.1),null);for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-u.x)<90&&Math.abs(o.y-u.y)<50){dmgTarget(o,o.hero?70:55,null);o.kb=o.sc>1.5?120:400;o.flash=.3;}blastBase(0,u.x,90,70);}}
       continue;}
     if(u.dying>0){u.dying-=dt;if(u.dying<=0)u.gone=true;continue;}
     if(u.revenge&&(u.revenge.dying>0||u.revenge.gone))u.revenge=null;
@@ -1073,6 +1078,7 @@ function updToys(dt){
     burst(o.tx,o.ty-6,o.car?'#ff5a3c':o.col,o.car?30:(o.big?12:7),o.car?300:(o.big?200:130));if(o.big)ring(o.tx,o.ty-6,50,o.col);if(o.car){burst(o.tx,o.ty-6,'#ffe27a',14,260);ring(o.tx,o.ty,R+6,'#ff3c2a');ring(o.tx,o.ty,R*.6,'#fff');S.shake=Math.max(S.shake,.7);sfx('boom');}
     for(const e of S.units)if(e.team!==o.src.team&&e.dying<=0&&!e.gone&&!e.hid&&Math.abs(e.x-o.tx)<R&&Math.abs(e.y-o.ty)<34){dmgTarget(e,dm,o.src);e.kb=e.sc>1.5?(o.car?120:20):(o.car?520:90);e.flash=.2;if(o.big&&e.type!=='ehcolo'&&e.type!=='ctitan'){e.conf=Math.max(e.conf||0,e.type==='bos'?1.8:3);if(!e._pz||S.time-e._pz>.8){e._pz=S.time;floatText(e.x,e.y-62*e.sc,'Pusing! \u2605','#ffe066');}}}
     for(const w of S.towers)if(w.team!==o.src.team&&!w.gone&&w.dying<=0&&!w.lock&&Math.abs(w.x-o.tx)<R&&Math.abs(w.y-o.ty)<40)dmgTarget(w,dm*.6,o.src);
+    if(o.car)blastBase(1-o.src.team,o.tx,R,dm*.6);
   }}
   S.toys=S.toys.filter(q=>!q.done);
 }
@@ -1129,7 +1135,7 @@ function goXF(u){
 function updRocks(dt){
   for(const r of S.rocks){r.t+=dt;if(r.t>=r.dur){r.done=true;ring(r.x,r.ty,58,'#a89a80');burst(r.x,r.ty-6,'#a89a80',8,150);S.shake=Math.max(S.shake,.1);sfx('boom');
     for(const o of S.units)if(o.team===0&&o.dying<=0&&!o.gone&&!o.hid&&Math.abs(o.x-r.x)<56&&Math.abs(o.y-r.ty)<36){dmgTarget(o,26,null);o.kb=o.sc>1.5?60:200;o.flash=.3;}
-    for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-r.x)<46&&Math.abs(w.y-r.ty)<40)dmgTarget(w,30,null);}}
+    for(const w of S.towers)if(w.team===0&&!w.gone&&w.dying<=0&&Math.abs(w.x-r.x)<46&&Math.abs(w.y-r.ty)<40)dmgTarget(w,30,null);blastBase(0,r.x,56,30);}}
   S.rocks=S.rocks.filter(q=>!q.done);
 }
 function drawRocks(){
